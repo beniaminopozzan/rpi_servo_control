@@ -19,29 +19,26 @@ from rclpy.node import Node
 from std_msgs.msg import Float32
 
 
-# IO library for using the Raspberry GPIO
-import RPi.GPIO as GPIO
+# PWM library to use the Hardware PWM
+from rpi_hardware_pwm import HardwarePWM
 
 # class for controlling the servo
 class ServoController:
 	def __init__(self, servoPin):
-		self.servoPin = servoPin
-		# servo PIN as output
-		GPIO.setup(self.servoPin, GPIO.OUT)
+		# check for valid servoPin
+		assert ( servoPin==12 or servoPin==35 ), "servoPin must be 12 or 35"
+
+		# assign PWM channel
+		pwmCH = 0 if servoPin==12 else 1
+
 		# PWM object connected on the servo pin working at 50Hz
-		self.servo = GPIO.PWM(self.servoPin, 50)
+		self.servo = HardwarePWM(pwm_channel=pwmCH, hz=50)
 		# Start PWM generation and set initial angle at 90 degree
 		self.servo.start(self.getPWM(90.0))
-	
-	def __del__(self):
-		# stop PWM once the object is destroyed
-		self.servo.stop()
-		# deinitialize the GPIOs		
-		GPIO.cleanup()
 		
 	def update(self,angle):
 		# update the PWM duty cycle
-		self.servo.ChangeDutyCycle(self.getPWM(angle))
+		self.servo.change_duty_cycle(self.getPWM(angle))
 		
 	# get the PWM duty cycle based on the desired angle.
 	# 0   degree -> 1 ms   ON time
@@ -68,13 +65,11 @@ class MinimalSubscriber(Node):
 
 	def listener_callback(self, msg):
 		self.servo.update(msg.data)
-		self.get_logger().info('new servo position %f degrees' % msg.data)
+		self.get_logger().debug('new servo position %f degrees' % msg.data)
         
 
 
 def main(args=None):
-	# uses the BOARD mode pin numbering
-	GPIO.setmode(GPIO.BOARD)
 	# create servo object connected to pin 12
 	myServo = ServoController(12)
 	rclpy.init(args=args)
@@ -83,12 +78,15 @@ def main(args=None):
 
 	rclpy.spin(minimal_subscriber)
 
+
+	# stop the PWM generation
+	myServo.stop()
+
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically
     # when the garbage collector destroys the node object)
 	minimal_subscriber.destroy_node()
 	rclpy.shutdown()
-	
 
 
 if __name__ == '__main__':
